@@ -1,66 +1,52 @@
-import 'package:isar/isar.dart';
+import 'package:hive/hive.dart';
 import '../models/transaction.dart';
 
 class TransactionRepository {
-  final Isar _isar;
+  final Box<Transaction> _box;
 
-  TransactionRepository(this._isar);
+  TransactionRepository(this._box);
 
-  Future<List<Transaction>> getAllTransactions() async {
-    return await _isar.transactions.where().sortByTimestampDesc().findAll();
+  List<Transaction> getAllTransactions() {
+    return _box.values.toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
   }
 
   Stream<List<Transaction>> watchAllTransactions() {
-    return _isar.transactions.where().sortByTimestampDesc().watch(fireImmediately: true);
+    return _box.watch().map((_) => getAllTransactions());
   }
 
-  Future<List<Transaction>> getTransactionsForDate(DateTime date) async {
+  List<Transaction> getTransactionsForDate(DateTime date) {
     final startOfDay = DateTime(date.year, date.month, date.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
-    return await _isar.transactions
-        .filter()
-        .dateBetween(startOfDay, endOfDay, includeUpper: false)
-        .sortByTimestampDesc()
-        .findAll();
+    return _box.values
+        .where((tx) =>
+            tx.timestamp.isAfter(startOfDay) && tx.timestamp.isBefore(endOfDay))
+        .toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
   }
 
   Stream<List<Transaction>> watchTransactionsForDate(DateTime date) {
-    final startOfDay = DateTime(date.year, date.month, date.day);
-    final endOfDay = startOfDay.add(const Duration(days: 1));
-    return _isar.transactions
-        .filter()
-        .dateBetween(startOfDay, endOfDay, includeUpper: false)
-        .sortByTimestampDesc()
-        .watch(fireImmediately: true);
+    return _box.watch().map((_) => getTransactionsForDate(date));
   }
 
-  Future<List<Transaction>> getTransactionsForDateRange(DateTime start, DateTime end) async {
-    return await _isar.transactions
-        .filter()
-        .dateBetween(start, end)
-        .sortByTimestampDesc()
-        .findAll();
+  List<Transaction> getTransactionsForDateRange(DateTime start, DateTime end) {
+    return _box.values
+        .where((tx) => tx.timestamp.isAfter(start) && tx.timestamp.isBefore(end))
+        .toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
   }
 
-  Future<List<Transaction>> getTransactionsForWeek(DateTime date) async {
+  List<Transaction> getTransactionsForWeek(DateTime date) {
     final startOfWeek = date.subtract(Duration(days: date.weekday - 1));
     final start = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
     final end = start.add(const Duration(days: 7));
-    return await _isar.transactions
-        .filter()
-        .dateBetween(start, end)
-        .sortByTimestampDesc()
-        .findAll();
+    return getTransactionsForDateRange(start, end);
   }
 
-  Future<List<Transaction>> getTransactionsForMonth(DateTime date) async {
+  List<Transaction> getTransactionsForMonth(DateTime date) {
     final start = DateTime(date.year, date.month, 1);
     final end = DateTime(date.year, date.month + 1, 1);
-    return await _isar.transactions
-        .filter()
-        .dateBetween(start, end)
-        .sortByTimestampDesc()
-        .findAll();
+    return getTransactionsForDateRange(start, end);
   }
 
   Future<void> addTransaction(Transaction transaction) async {
@@ -69,43 +55,33 @@ class TransactionRepository {
       transaction.timestamp.month,
       transaction.timestamp.day,
     );
-    await _isar.writeTxn(() async {
-      await _isar.transactions.put(transaction);
-    });
+    await _box.add(transaction);
   }
 
   Future<void> updateTransaction(Transaction transaction) async {
-    await _isar.writeTxn(() async {
-      await _isar.transactions.put(transaction);
-    });
+    await transaction.save();
   }
 
-  Future<void> deleteTransaction(int id) async {
-    await _isar.writeTxn(() async {
-      await _isar.transactions.delete(id);
-    });
+  Future<void> deleteTransaction(int index) async {
+    await _box.deleteAt(index);
   }
 
-  Future<bool> isDuplicate(String rawText) async {
+  bool isDuplicate(String rawText) {
     if (rawText.isEmpty) return false;
-    final existing = await _isar.transactions
-        .filter()
-        .rawTextEqualTo(rawText)
-        .findFirst();
-    return existing != null;
+    return _box.values.any((tx) => tx.rawText == rawText);
   }
 
-  Future<int> getTransactionCount() async {
-    return await _isar.transactions.count();
+  int getTransactionCount() {
+    return _box.length;
   }
 
-  Future<double> getTotalSpentForDate(DateTime date) async {
-    final transactions = await getTransactionsForDate(date);
+  double getTotalSpentForDate(DateTime date) {
+    final transactions = getTransactionsForDate(date);
     return transactions.fold(0.0, (sum, tx) => sum + tx.amount);
   }
 
-  Future<double> getTotalWastedForDate(DateTime date) async {
-    final transactions = await getTransactionsForDate(date);
+  double getTotalWastedForDate(DateTime date) {
+    final transactions = getTransactionsForDate(date);
     return transactions
         .where((tx) => tx.isWaste)
         .fold(0.0, (sum, tx) => sum + tx.amount);

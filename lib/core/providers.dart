@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:isar/isar.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../models/transaction.dart';
 import '../models/category.dart';
 import '../models/daily_summary.dart';
@@ -11,16 +10,28 @@ import '../services/waste_detector.dart';
 import '../services/category_detector.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-final isarProvider = FutureProvider<Isar>((ref) async {
-  final dir = await getApplicationDocumentsDirectory();
-  return await Isar.open(
-    [TransactionSchema, CategorySchema, DailySummarySchema],
-    directory: dir.path,
-  );
+final hiveInitializedProvider = FutureProvider<bool>((ref) async {
+  await Hive.initFlutter();
+  
+  Hive.registerAdapter(TransactionCategoryAdapter());
+  Hive.registerAdapter(TransactionSourceAdapter());
+  Hive.registerAdapter(TransactionAdapter());
+  Hive.registerAdapter(CategoryAdapter());
+  Hive.registerAdapter(DailySummaryAdapter());
+  
+  await Hive.openBox<Transaction>('transactions');
+  await Hive.openBox<Category>('categories');
+  await Hive.openBox<DailySummary>('daily_summaries');
+  
+  return true;
 });
 
 final sharedPreferencesProvider = FutureProvider<SharedPreferences>((ref) async {
   return await SharedPreferences.getInstance();
+});
+
+final transactionBoxProvider = Provider<Box<Transaction>>((ref) {
+  return Hive.box<Transaction>('transactions');
 });
 
 final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
@@ -32,11 +43,8 @@ final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
 });
 
 final transactionRepositoryProvider = Provider<TransactionRepository>((ref) {
-  final isar = ref.watch(isarProvider).value;
-  if (isar == null) {
-    throw Exception('Isar not initialized');
-  }
-  return TransactionRepository(isar);
+  final box = ref.watch(transactionBoxProvider);
+  return TransactionRepository(box);
 });
 
 final wasteDetectorProvider = Provider<WasteDetector>((ref) {
@@ -47,25 +55,25 @@ final categoryDetectorProvider = Provider<CategoryDetector>((ref) {
   return CategoryDetector();
 });
 
-final todayTransactionsProvider = StreamProvider<List<Transaction>>((ref) {
+final todayTransactionsProvider = Provider<List<Transaction>>((ref) {
   final repo = ref.watch(transactionRepositoryProvider);
   final today = DateTime.now();
-  return repo.watchTransactionsForDate(today);
+  return repo.getTransactionsForDate(today);
 });
 
-final allTransactionsProvider = StreamProvider<List<Transaction>>((ref) {
+final allTransactionsProvider = Provider<List<Transaction>>((ref) {
   final repo = ref.watch(transactionRepositoryProvider);
-  return repo.watchAllTransactions();
+  return repo.getAllTransactions();
 });
 
 final weekTransactionsProvider = FutureProvider<List<Transaction>>((ref) async {
   final repo = ref.watch(transactionRepositoryProvider);
-  return await repo.getTransactionsForWeek(DateTime.now());
+  return repo.getTransactionsForWeek(DateTime.now());
 });
 
 final monthTransactionsProvider = FutureProvider<List<Transaction>>((ref) async {
   final repo = ref.watch(transactionRepositoryProvider);
-  return await repo.getTransactionsForMonth(DateTime.now());
+  return repo.getTransactionsForMonth(DateTime.now());
 });
 
 final dailyBudgetProvider = StateProvider<double>((ref) {

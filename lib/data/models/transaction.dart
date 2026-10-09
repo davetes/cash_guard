@@ -1,6 +1,4 @@
-import 'package:isar/isar.dart';
-
-part 'transaction.g.dart';
+import 'package:hive/hive.dart';
 
 enum TransactionCategory {
   food,
@@ -18,28 +16,14 @@ enum TransactionSource {
   receipt,
 }
 
-@collection
-class Transaction {
-  Id id = Isar.autoIncrement;
-
+class Transaction extends HiveObject {
   late double amount;
-
   late String merchant;
-
-  @enumerated
   late TransactionCategory category;
-
   late DateTime timestamp;
-
-  @enumerated
   late TransactionSource source;
-
   late bool isWaste;
-
   String? wasteReason;
-
   String? rawText;
-
-  @Index()
   late DateTime date;
 }

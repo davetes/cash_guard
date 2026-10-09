@@ -1,16 +1,50 @@
-import 'package:isar/isar.dart';
+import 'package:hive/hive.dart';
 
-part 'category.g.dart';
+class CategoryAdapter extends TypeAdapter<Category> {
+  @override
+  final int typeId = 3;
 
-@collection
-class Category {
-  Id id = Isar.autoIncrement;
+  @override
+  Category read(BinaryReader reader) {
+    final numOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+    };
+    return Category()
+      ..name = fields[0] as String
+      ..iconCode = fields[1] as int
+      ..colorHex = fields[2] as String
+      ..dailyBudget = fields[3] as double?;
+  }
 
+  @override
+  void write(BinaryWriter writer, Category obj) {
+    writer
+      ..writeByte(4)
+      ..writeByte(0)
+      ..write(obj.name)
+      ..writeByte(1)
+      ..write(obj.iconCode)
+      ..writeByte(2)
+      ..write(obj.colorHex)
+      ..writeByte(3)
+      ..write(obj.dailyBudget);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CategoryAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
+}
+
+class Category extends HiveObject {
   late String name;
-
   late int iconCode;
-
   late String colorHex;
-
   double? dailyBudget;
 }
